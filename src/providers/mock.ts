@@ -6,7 +6,7 @@ import { latestUserPrompt } from "./base/cli.js";
  * without any CLIs or API keys. Echoes the prompt and reports how many turns it
  * has seen in ITS OWN history (proving context isolation).
  */
-export function createMockAdapter(label = "Mock"): ProviderAdapter {
+export function createMockAdapter(label = "Mock", flavor = ""): ProviderAdapter {
   return {
     id: "mock",
     label,
@@ -16,7 +16,10 @@ export function createMockAdapter(label = "Mock"): ProviderAdapter {
     async send(history: Message[], onToken) {
       const turns = history.filter((m) => m.role === "user").length;
       const prompt = latestUserPrompt(history);
-      const reply = `[${label}] turn #${turns}. You said: "${prompt}". (This is a mock reply; my isolated history has ${history.length} messages.)`;
+      const reply =
+        `[${label}] turn #${turns}. You asked: "${prompt}". ` +
+        (flavor ? `${flavor} ` : "") +
+        `My isolated history has ${history.length} messages, so I only ever see my own thread.`;
       if (onToken) {
         // Emit word-by-word to exercise the streaming UI offline.
         let acc = "";

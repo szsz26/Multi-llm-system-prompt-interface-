@@ -43,7 +43,19 @@ npm install
 cp .env.example .env   # fill in keys you have (Grok/Perplexity); rest can stay blank
 ```
 
-## Run
+## Try it instantly (no keys or CLIs)
+
+```bash
+npm install
+npm run demo
+```
+
+Demo mode runs three offline mock providers so you can see the whole flow —
+panes, per-LLM toggles, live streaming, the diff and the AI synthesis — without
+installing any CLI or setting any API key. Send a prompt, switch panes with the
+number keys, pause one with `t`, then open the Combined pane and press `c`.
+
+## Run (real providers)
 
 ```bash
 npm run dev            # uses the "default" session
