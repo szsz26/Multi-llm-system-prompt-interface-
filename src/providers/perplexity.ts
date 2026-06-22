@@ -12,12 +12,8 @@ export function createPerplexityAdapter(cfg: ProviderConfig): ProviderAdapter {
       if (apiKey) return { ok: true };
       return { ok: false, reason: "PERPLEXITY_API_KEY not set" };
     },
-    async send(history: Message[]) {
-      return chatCompletion(history, {
-        baseUrl: "https://api.perplexity.ai",
-        apiKey,
-        model,
-      });
+    async send(history: Message[], onToken) {
+      return chatCompletion(history, { baseUrl: "https://api.perplexity.ai", apiKey, model }, onToken);
     },
   };
 }

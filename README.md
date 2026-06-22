@@ -10,6 +10,8 @@ Built as an interactive TUI (Node.js + TypeScript + [Ink](https://github.com/vad
 ## Features
 
 - **One prompt → all models.** Type once, "blast" it to every active provider in parallel.
+- **Live streaming.** Responses stream into each pane token-by-token as they arrive
+  (SSE for the API providers; `stream-json`/stdout for the CLIs).
 - **One clean view.** A pane per model plus a **Combined** pane.
 - **Per-LLM toggle.** Pause/resume any model with a keypress; the blast only hits
   the ones that are toggled on. Paused models keep their history and can be

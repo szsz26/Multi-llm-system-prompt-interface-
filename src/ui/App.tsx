@@ -27,6 +27,7 @@ export function App({ adapters, store, config }: Props) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [responses, setResponses] = useState<Record<string, string>>({});
+  const [partials, setPartials] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [synthesis, setSynthesis] = useState<string | undefined>();
   const [synthesizing, setSynthesizing] = useState(false);
@@ -65,8 +66,15 @@ export function App({ adapters, store, config }: Props) {
     update: Partial<ProviderResponse> & { status: "running" | "done" | "error" },
   ) => {
     setStatus(id, update.status);
+    if (update.status === "running") {
+      setPartials((p) => ({ ...p, [id]: "" }));
+    }
     if (update.status === "done" && typeof update.text === "string") {
       setResponses((r) => ({ ...r, [id]: update.text! }));
+      setPartials((p) => {
+        const { [id]: _, ...rest } = p;
+        return rest;
+      });
       setErrors((e) => {
         const { [id]: _, ...rest } = e;
         return rest;
@@ -74,8 +82,16 @@ export function App({ adapters, store, config }: Props) {
     }
     if (update.status === "error" && update.error) {
       setErrors((e) => ({ ...e, [id]: update.error! }));
+      setPartials((p) => {
+        const { [id]: _, ...rest } = p;
+        return rest;
+      });
     }
     bump();
+  };
+
+  const onToken = (id: string, delta: string) => {
+    setPartials((p) => ({ ...p, [id]: (p[id] ?? "") + delta }));
   };
 
   const activeAdapters = () =>
@@ -93,7 +109,7 @@ export function App({ adapters, store, config }: Props) {
     setLastPrompt(prompt);
     setSynthesis(undefined);
     setBusy(true);
-    await blast(prompt, targets, store, onUpdate);
+    await blast(prompt, targets, store, onUpdate, onToken);
     setBusy(false);
     bump();
   };
@@ -189,7 +205,12 @@ export function App({ adapters, store, config }: Props) {
             diffPairIds={diffPairIds}
           />
         ) : focused ? (
-          <ProviderPane provider={focused} history={store.history(focused.id)} error={errors[focused.id]} />
+          <ProviderPane
+            provider={focused}
+            history={store.history(focused.id)}
+            error={errors[focused.id]}
+            streaming={partials[focused.id]}
+          />
         ) : (
           <Text color="gray">No providers configured.</Text>
         )}

@@ -12,12 +12,8 @@ export function createGrokAdapter(cfg: ProviderConfig): ProviderAdapter {
       if (apiKey) return { ok: true };
       return { ok: false, reason: "XAI_API_KEY not set" };
     },
-    async send(history: Message[]) {
-      return chatCompletion(history, {
-        baseUrl: "https://api.x.ai/v1",
-        apiKey,
-        model,
-      });
+    async send(history: Message[], onToken) {
+      return chatCompletion(history, { baseUrl: "https://api.x.ai/v1", apiKey, model }, onToken);
     },
   };
 }

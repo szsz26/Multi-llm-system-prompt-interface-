@@ -6,6 +6,8 @@ interface Props {
   provider: ProviderState;
   history: Message[];
   error?: string;
+  /** Live partial text while the provider is streaming this turn. */
+  streaming?: string;
 }
 
 function statusLabel(p: ProviderState): { text: string; color: string } {
@@ -24,8 +26,9 @@ function statusLabel(p: ProviderState): { text: string; color: string } {
 }
 
 /** Full-pane view of a single provider's isolated transcript. */
-export function ProviderPane({ provider, history, error }: Props) {
+export function ProviderPane({ provider, history, error, streaming }: Props) {
   const status = statusLabel(provider);
+  const isStreaming = provider.status === "running";
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
       <Box>
@@ -48,6 +51,14 @@ export function ProviderPane({ provider, history, error }: Props) {
             </Box>
           ))
         )}
+        {isStreaming ? (
+          <Box flexDirection="column" marginBottom={1}>
+            <Text color="white" bold>
+              {provider.label} <Text color="cyan">▌</Text>
+            </Text>
+            <Text>{streaming && streaming.length > 0 ? streaming : <Text color="gray">…thinking</Text>}</Text>
+          </Box>
+        ) : null}
         {error ? <Text color="red">⚠ {error}</Text> : null}
       </Box>
     </Box>

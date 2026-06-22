@@ -36,8 +36,12 @@ export interface ProviderAdapter {
   label: string;
   /** True if this provider can actually be used right now. */
   isAvailable(): Promise<{ ok: boolean; reason?: string }>;
-  /** Answer the next turn given this provider's full, isolated history. */
-  send(history: Message[]): Promise<string>;
+  /**
+   * Answer the next turn given this provider's full, isolated history.
+   * If `onToken` is supplied, the adapter streams partial text as it arrives
+   * (and still returns the complete text when done).
+   */
+  send(history: Message[], onToken?: (delta: string) => void): Promise<string>;
 }
 
 /** Lets a CLI adapter persist/recall a native session id for resuming context. */

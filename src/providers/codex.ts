@@ -1,5 +1,5 @@
 import type { Message, ProviderAdapter, ProviderConfig } from "../types.js";
-import { commandExists, renderHistoryAsPrompt, runCli } from "./base/cli.js";
+import { commandExists, renderHistoryAsPrompt, runCli, runCliStream } from "./base/cli.js";
 
 /**
  * OpenAI via the `codex` CLI in non-interactive mode (`codex exec`). The
@@ -16,10 +16,14 @@ export function createCodexAdapter(cfg: ProviderConfig): ProviderAdapter {
       if (await commandExists(command)) return { ok: true };
       return { ok: false, reason: `'${command}' CLI not found on PATH` };
     },
-    async send(history: Message[]) {
+    async send(history: Message[], onToken) {
       const args = ["exec"];
       if (cfg.model) args.push("--model", cfg.model);
       args.push(renderHistoryAsPrompt(history));
+      if (onToken) {
+        const { stdout } = await runCliStream(command, args, { onChunk: onToken });
+        return stdout.trim();
+      }
       const { stdout } = await runCli(command, args);
       return stdout.trim();
     },

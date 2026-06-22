@@ -12,13 +12,17 @@ export async function blast(
   providers: ProviderAdapter[],
   store: ConversationStore,
   onUpdate: (id: string, update: Partial<ProviderResponse> & { status: "running" | "done" | "error" }) => void,
+  onToken?: (id: string, delta: string) => void,
 ): Promise<ProviderResponse[]> {
   const runs = providers.map(async (provider): Promise<ProviderResponse> => {
     const start = Date.now();
     onUpdate(provider.id, { status: "running" });
     store.addUser(provider.id, prompt);
     try {
-      const text = await provider.send(store.history(provider.id));
+      const text = await provider.send(
+        store.history(provider.id),
+        onToken ? (delta) => onToken(provider.id, delta) : undefined,
+      );
       store.addAssistant(provider.id, text);
       const res: ProviderResponse = { providerId: provider.id, text, ok: true, ms: Date.now() - start };
       onUpdate(provider.id, { status: "done", text, ok: true, ms: res.ms });
