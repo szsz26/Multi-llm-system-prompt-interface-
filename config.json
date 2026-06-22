@@ -1,0 +1,11 @@
+{
+  "synthesisProvider": "claude",
+  "providers": {
+    "claude": { "enabled": true, "command": "claude" },
+    "codex": { "enabled": true, "command": "codex" },
+    "gemini": { "enabled": true, "command": "gemini" },
+    "grok": { "enabled": true, "model": "grok-4" },
+    "perplexity": { "enabled": true, "model": "sonar-pro" },
+    "mock": { "enabled": false }
+  }
+}

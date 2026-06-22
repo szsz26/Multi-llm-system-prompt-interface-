@@ -1,0 +1,31 @@
+{
+  "name": "multi-llm-compare",
+  "version": "0.1.0",
+  "description": "Prompt multiple LLMs (Claude, OpenAI/Codex, Grok, Perplexity, Gemini) at once, compare responses, and continue each in its own isolated context.",
+  "type": "module",
+  "bin": {
+    "mllm": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.tsx",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "diff": "^7.0.0",
+    "dotenv": "^16.4.7",
+    "execa": "^9.5.2",
+    "ink": "^5.1.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.18",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
