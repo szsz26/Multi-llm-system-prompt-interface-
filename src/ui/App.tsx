@@ -6,7 +6,7 @@ import type { ConversationStore } from "../conversation.js";
 import { blast } from "../orchestrator.js";
 import { synthesize, type NamedResponse } from "../compare/synthesize.js";
 import { StatusBar } from "./StatusBar.js";
-import { ProviderPane } from "./ProviderPane.js";
+import { OverviewGrid } from "./OverviewGrid.js";
 import { CombinedPane } from "./CombinedPane.js";
 
 interface Props {
@@ -23,7 +23,8 @@ export function App({ adapters, store, config }: Props) {
     adapters.map((a) => ({ id: a.id, label: a.label, available: false, active: true, status: "idle" })),
   );
   const [mode, setMode] = useState<"insert" | "nav">("insert");
-  const [activePane, setActivePane] = useState(0);
+  const [view, setView] = useState<"grid" | "combined">("grid");
+  const [focusedCol, setFocusedCol] = useState(0);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [responses, setResponses] = useState<Record<string, string>>({});
@@ -108,6 +109,7 @@ export function App({ adapters, store, config }: Props) {
     setInput("");
     setLastPrompt(prompt);
     setSynthesis(undefined);
+    setView("grid");
     setBusy(true);
     await blast(prompt, targets, store, onUpdate, onToken);
     setBusy(false);
@@ -115,6 +117,7 @@ export function App({ adapters, store, config }: Props) {
   };
 
   const runSynthesis = async () => {
+    setView("combined");
     const named: NamedResponse[] = providers
       .filter((p) => responses[p.id]?.trim())
       .map((p) => ({ label: p.label, text: responses[p.id]! }));
@@ -142,47 +145,54 @@ export function App({ adapters, store, config }: Props) {
     }
   };
 
+  const toggleFocused = () =>
+    setProviders((prev) =>
+      prev.map((p, i) => (i === focusedCol && p.available ? { ...p, active: !p.active } : p)),
+    );
+
+  const resetFocused = () => {
+    if (view === "combined") {
+      store.reset();
+      setResponses({});
+      setSynthesis(undefined);
+    } else {
+      const id = providers[focusedCol]?.id;
+      if (!id) return;
+      store.reset(id);
+      setResponses((r) => {
+        const { [id]: _, ...rest } = r;
+        return rest;
+      });
+    }
+    bump();
+  };
+
   useInput((key, special) => {
     if (special.escape) {
-      setMode("nav");
+      if (view === "combined") setView("grid");
+      else setMode("nav");
       return;
     }
     if (mode === "insert") return; // TextInput owns typing + Enter.
 
     if (key === "i") return setMode("insert");
     if (key === "q" || (special.ctrl && key === "c")) return exit();
-    if (special.leftArrow) return setActivePane((i) => Math.max(0, i - 1));
-    if (special.rightArrow) return setActivePane((i) => Math.min(providers.length, i + 1));
+    if (key === "g") return setView("grid");
+    if (key === "c") return void runSynthesis();
+    if (key === "r") return resetFocused();
+
+    // Column navigation / selection only applies to the grid.
+    if (special.leftArrow) return setFocusedCol((i) => Math.max(0, i - 1));
+    if (special.rightArrow) return setFocusedCol((i) => Math.min(providers.length - 1, i + 1));
     if (/[1-9]/.test(key)) {
       const idx = parseInt(key, 10) - 1;
-      if (idx <= providers.length) setActivePane(idx);
-      return;
-    }
-    if (key === "t" || key === " ") {
-      // Toggle the focused provider on/off (only if available).
-      setProviders((prev) =>
-        prev.map((p, i) => (i === activePane && p.available ? { ...p, active: !p.active } : p)),
-      );
-      return;
-    }
-    if (key === "c") return void runSynthesis();
-    if (key === "r") {
-      // Reset focused provider's conversation (or all on the combined pane).
-      if (activePane < providers.length) {
-        const id = providers[activePane]!.id;
-        store.reset(id);
-        setResponses((r) => {
-          const { [id]: _, ...rest } = r;
-          return rest;
-        });
-      } else {
-        store.reset();
-        setResponses({});
-        setSynthesis(undefined);
+      if (idx < providers.length) {
+        setFocusedCol(idx);
+        setView("grid");
       }
-      bump();
       return;
     }
+    if (key === "t" || key === " ") return toggleFocused();
   });
 
   const diffPairIds = useMemo<[string, string] | null>(() => {
@@ -190,13 +200,25 @@ export function App({ adapters, store, config }: Props) {
     return withText.length >= 2 ? [withText[0]!, withText[1]!] : null;
   }, [providers, responses]);
 
-  const onCombined = activePane >= providers.length;
-  const focused = providers[activePane];
+  const latestReply = (id: string): string | undefined => {
+    const h = store.history(id);
+    for (let i = h.length - 1; i >= 0; i--) if (h[i]!.role === "assistant") return h[i]!.content;
+    return undefined;
+  };
+
+  const columns = providers.map((p) => ({
+    provider: p,
+    latest: latestReply(p.id),
+    streaming: partials[p.id],
+    error: errors[p.id],
+  }));
+
+  const activeCount = providers.filter((p) => p.available && p.active).length;
 
   return (
     <Box flexDirection="column" minHeight={20}>
       <Box flexGrow={1} flexDirection="column">
-        {onCombined ? (
+        {view === "combined" ? (
           <CombinedPane
             responses={responses}
             labels={labels}
@@ -204,15 +226,8 @@ export function App({ adapters, store, config }: Props) {
             synthesizing={synthesizing}
             diffPairIds={diffPairIds}
           />
-        ) : focused ? (
-          <ProviderPane
-            provider={focused}
-            history={store.history(focused.id)}
-            error={errors[focused.id]}
-            streaming={partials[focused.id]}
-          />
         ) : (
-          <Text color="gray">No providers configured.</Text>
+          <OverviewGrid columns={columns} focusedCol={focusedCol} />
         )}
       </Box>
 
@@ -223,11 +238,15 @@ export function App({ adapters, store, config }: Props) {
           onChange={setInput}
           onSubmit={submit}
           focus={mode === "insert"}
-          placeholder={mode === "insert" ? "Type a prompt and press Enter…" : "(nav mode — press i to type)"}
+          placeholder={
+            mode === "insert"
+              ? `Type a prompt → sends to ${activeCount} active model${activeCount === 1 ? "" : "s"} (Enter)`
+              : "(nav mode — press i to type)"
+          }
         />
       </Box>
 
-      <StatusBar providers={providers} activePane={activePane} mode={mode} />
+      <StatusBar providers={providers} focusedCol={focusedCol} mode={mode} view={view} />
     </Box>
   );
 }

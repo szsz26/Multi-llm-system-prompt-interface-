@@ -1,10 +1,12 @@
 import { execa } from "execa";
 import type { Message } from "../../types.js";
 
-/** Check whether a command exists on PATH. */
+/** Check whether a command exists on PATH (cross-platform). */
 export async function commandExists(cmd: string): Promise<boolean> {
+  // `which` doesn't exist on Windows — use `where` there instead.
+  const probe = process.platform === "win32" ? "where" : "which";
   try {
-    await execa("which", [cmd]);
+    await execa(probe, [cmd]);
     return true;
   } catch {
     return false;

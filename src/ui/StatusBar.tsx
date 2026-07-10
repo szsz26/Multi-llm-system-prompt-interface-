@@ -4,8 +4,9 @@ import type { ProviderState } from "../types.js";
 
 interface Props {
   providers: ProviderState[];
-  activePane: number;
+  focusedCol: number;
   mode: "insert" | "nav";
+  view: "grid" | "combined";
 }
 
 function toggleGlyph(p: ProviderState): { glyph: string; color: string } {
@@ -14,13 +15,13 @@ function toggleGlyph(p: ProviderState): { glyph: string; color: string } {
 }
 
 /** Bottom bar: per-provider toggle state + key hints. */
-export function StatusBar({ providers, activePane, mode }: Props) {
+export function StatusBar({ providers, focusedCol, mode, view }: Props) {
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
       <Box flexWrap="wrap">
         {providers.map((p, i) => {
           const { glyph, color } = toggleGlyph(p);
-          const focused = i === activePane;
+          const focused = view === "grid" && i === focusedCol;
           return (
             <Box key={p.id} marginRight={2}>
               <Text color={color}>{glyph} </Text>
@@ -33,16 +34,18 @@ export function StatusBar({ providers, activePane, mode }: Props) {
           );
         })}
         <Box>
-          <Text bold={activePane === providers.length} underline={activePane === providers.length}>
-            {providers.length + 1}:Combined
+          <Text bold={view === "combined"} underline={view === "combined"} color="magenta">
+            [c]ompare
           </Text>
         </Box>
       </Box>
       <Box>
         <Text color="gray">
           {mode === "insert"
-            ? "[Enter] send to active  ·  [Esc] nav mode"
-            : "[i] type  ·  [1-9/←→] pane  ·  [t/space] toggle  ·  [c] compare  ·  [r] reset  ·  [q] quit"}
+            ? "● on = gets the prompt  ·  [Enter] send  ·  [Esc] nav mode"
+            : view === "combined"
+              ? "[g/Esc] back to grid  ·  [r] reset all  ·  [i] type  ·  [q] quit"
+              : "[←→/1-9] pick model  ·  [t/space] toggle on/off  ·  [c]ompare  ·  [r] reset  ·  [i] type  ·  [q] quit"}
         </Text>
       </Box>
     </Box>

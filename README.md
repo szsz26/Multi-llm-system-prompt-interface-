@@ -10,12 +10,14 @@ Built as an interactive TUI (Node.js + TypeScript + [Ink](https://github.com/vad
 ## Features
 
 - **One prompt → all models.** Type once, "blast" it to every active provider in parallel.
-- **Live streaming.** Responses stream into each pane token-by-token as they arrive
-  (SSE for the API providers; `stream-json`/stdout for the CLIs).
-- **One clean view.** A pane per model plus a **Combined** pane.
-- **Per-LLM toggle.** Pause/resume any model with a keypress; the blast only hits
-  the ones that are toggled on. Paused models keep their history and can be
-  resumed later.
+- **Side-by-side columns.** Every model is a live column on screen at the same
+  time, so a single prompt visibly fills them all — no switching panes to see who
+  answered. A **Combined** view adds the compare/synthesis.
+- **Live streaming.** Responses stream into each column token-by-token as they
+  arrive (SSE for the API providers; `stream-json`/stdout for the CLIs).
+- **Per-LLM toggle = the selector.** Whatever is toggled **on** (green ●) gets
+  the next prompt; toggle a model **off** (○) to exclude it. Paused models keep
+  their history and can be resumed later.
 - **Isolated context per model.** Each provider has its own conversation thread.
   A follow-up continues each model's own train of thought — it never sees another
   model's answers.
@@ -36,7 +38,36 @@ Built as an interactive TUI (Node.js + TypeScript + [Ink](https://github.com/vad
 | Grok       | x.ai HTTP API          | `XAI_API_KEY` (no official CLI)      |
 | Perplexity | Perplexity HTTP API    | `PERPLEXITY_API_KEY` (no official CLI) |
 
-## Install
+## Windows quick start (non-technical, step by step)
+
+Everything happens in **one PowerShell window** — paste one line, press Enter,
+wait for it to finish, then the next line.
+
+**One-time installs (point-and-click, from your browser):**
+1. Node.js — https://nodejs.org/en/download → click the **LTS** Windows installer, run it, Next through the defaults.
+2. Git — https://git-scm.com/download/win → run it, Next through the defaults.
+3. Close and reopen PowerShell so it sees the new programs.
+
+**Allow scripts to run (one time):** Windows blocks npm by default. Paste this,
+press Enter, then type `Y`:
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
+**Download and start:**
+```powershell
+git clone https://github.com/szsz26/Multi-llm-system-prompt-interface-.git
+cd Multi-llm-system-prompt-interface-
+git checkout claude/multi-ai-cli-compare-clcgne
+npm install
+npm run demo
+```
+`npm run demo` opens the app with three offline demo models — no accounts needed.
+Press `q` to quit.
+
+**Get updates later:** `cd` into the folder, then `git pull`, `npm install`, run again.
+
+## Install (Mac/Linux or already comfortable in a terminal)
 
 ```bash
 npm install
@@ -55,12 +86,45 @@ panes, per-LLM toggles, live streaming, the diff and the AI synthesis — withou
 installing any CLI or setting any API key. Send a prompt, switch panes with the
 number keys, pause one with `t`, then open the Combined pane and press `c`.
 
+## Connect your real accounts
+
+Claude, ChatGPT, and Gemini each connect through their official command-line
+tools. Install each one, then log in **with your existing account** (no API key
+needed). Run these in the same window:
+
+**Claude**
+```bash
+npm install -g @anthropic-ai/claude-code
+claude          # opens your browser to log in with your Claude account
+```
+
+**ChatGPT (OpenAI)**
+```bash
+npm install -g @openai/codex
+codex           # sign in with your ChatGPT account
+```
+
+**Gemini**
+```bash
+npm install -g @google/gemini-cli
+gemini          # opens your browser to log in with your Google account
+```
+
+**Grok & Perplexity** have no login-based CLI — connect them with API keys in a
+`.env` file: copy `.env.example` to `.env` and paste in `XAI_API_KEY` and/or
+`PERPLEXITY_API_KEY`.
+
+Then start the real app:
+
 ## Run (real providers)
 
 ```bash
 npm run dev            # uses the "default" session
 npm run dev myproject  # named session (separate saved histories)
 ```
+
+Each tool you connected shows a green ● in the status bar; anything not installed
+shows a grey ⊘ and is skipped.
 
 Or build and run the compiled binary:
 
@@ -74,15 +138,20 @@ node dist/index.js
 The UI has two modes (vim-style) so typing never collides with shortcuts.
 
 **Insert mode (default — for typing):**
-- `Enter` — send the prompt to all **active** providers
+- `Enter` — send the prompt to **every toggled-on model at once**
 - `Esc` — switch to nav mode
 
-**Nav mode:**
+**Nav mode (grid):**
 - `i` — back to typing
-- `1`–`9` / `←` `→` — switch pane (each provider + Combined)
-- `t` or `space` — toggle the focused provider on/off (pause)
-- `c` — generate the AI comparison/synthesis (Combined pane)
-- `r` — reset the focused provider's conversation (or all, on Combined)
+- `←` `→` / `1`–`9` — highlight a model's column
+- `t` or `space` — toggle the highlighted model on/off (on = gets the prompt)
+- `c` — open the **Combined** compare view (agreements, differences, diff)
+- `r` — reset the highlighted model's conversation
+- `q` — quit
+
+**Nav mode (combined view):**
+- `g` or `Esc` — back to the grid
+- `r` — reset all conversations
 - `q` — quit
 
 ## Configuration
