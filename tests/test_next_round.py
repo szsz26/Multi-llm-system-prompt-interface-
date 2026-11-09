@@ -74,3 +74,33 @@ def test_export_shows_what_each_ai_was_sent(harness, tmp_path):
     base = export_dir(app, h.refresh(), tmp_path)
     md = (base / "chat.md").read_text()
     assert "What Claude was sent" in md and "What Openai was sent" not in md
+
+
+def test_autosave_falls_back_when_documents_is_blocked(tmp_path, monkeypatch):
+    import argparse
+    import asyncio
+
+    import cockpit.export as export
+    from cockpit.cli import autosave, make_app
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    app = make_app(argparse.Namespace(home=str(tmp_path / "data"), demo=True, mode="plain"))
+    app.config.demo = False  # demo mode skips saving; we only want its fake lanes
+    app.interactive = True
+    blocked = tmp_path / "Documents" / "LLM Cockpit"
+    app.config.autosave_dir = str(blocked)
+    real = export.export_dir
+
+    def refuse_documents(a, c, root):
+        if root == blocked:  # what macOS does when Terminal isn't allowed into Documents
+            raise PermissionError(1, "Operation not permitted")
+        return real(a, c, root)
+
+    monkeypatch.setattr(export, "export_dir", refuse_documents)
+    ctx = app.ctx()
+    asyncio.run(app.engine.send(ctx, "first question", fresh=True))
+    target = autosave(app, ctx)
+    assert target == tmp_path / "home" / "LLM Cockpit" / "main.md"
+    assert "first question" in target.read_text()
+    assert (target.parent / "default" / "chats" / "main" / "chat.md").exists()
+    assert not blocked.exists()

@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from . import billing, log
+from . import __version__, billing, log
 from .config import CONFIG_TEMPLATE, CockpitConfig, load_config
 from .domain import AnalysisKind, CockpitError, Disclosure, RunStatus
 from .engine import Cockpit, Ctx, RoundResult, Selection
@@ -34,7 +35,7 @@ class App:
     project_override: str | None = None
     chat_override: str | None = None
     interactive: bool = False
-    autosave_told: bool = False
+    autosave_root: str | None = None  # where copies actually got saved (falls back if Documents is blocked)
     guide: bool = True  # shell: after each round, compare and ask what each AI gets next
 
     @property
@@ -99,21 +100,37 @@ def drain_input() -> None:
         pass
 
 
-def autosave(app: App, ctx: Ctx) -> None:
-    """Keep a readable copy of the chat (answers, comparisons, what each AI was sent) in a normal folder."""
+def saved_root(app: App) -> Path | None:
     folder = app.config.autosave_dir
-    if not folder or app.config.demo or app.renderer.mode == "json" or not (app.interactive or sys.stdout.isatty()):
-        return
-    from .export import export_dir
+    return Path(app.autosave_root or folder).expanduser() if folder else None
 
-    try:
-        base = export_dir(app, app.engine.refresh(ctx), Path(folder).expanduser())
-    except Exception as e:  # noqa: BLE001 - saving a copy must never break a round
-        app.renderer.out(f"(could not save a copy to {folder}: {e})", "yellow")
-        return
-    if not app.autosave_told:
-        app.renderer.out(f"Saved: {base / 'chat.md'} (updated after every round)", "dim")
-        app.autosave_told = True
+
+def autosave(app: App, ctx: Ctx, quiet: bool = False) -> Path | None:
+    """Keep a readable copy of the chat (answers, comparisons, what each AI was sent) in a normal folder:
+    <folder>/<topic>.md for reading, plus <folder>/<project>/chats/<topic>/ with every detail."""
+    root = saved_root(app)
+    if root is None or app.config.demo or app.renderer.mode == "json" or not (app.interactive or sys.stdout.isatty()):
+        return None
+    from .export import export_dir, export_text
+
+    ctx = app.engine.refresh(ctx)
+    name = ctx.chat.name if ctx.project.name == DEFAULT_PROJECT else f"{ctx.project.name} - {ctx.chat.name}"
+    name = re.sub(r'[\\/:*?"<>|]+', "-", name).strip() or "chat"
+    for attempt in (root, Path("~/LLM Cockpit").expanduser()):
+        try:
+            export_dir(app, ctx, attempt)
+            target = attempt / f"{name}.md"
+            write_private(target, export_text(app, ctx, "md"))
+        except OSError as e:  # e.g. macOS hasn't allowed Terminal into Documents
+            if attempt == root:
+                app.renderer.out(f"(can't save into {root}: {e.strerror or e}; saving in your home folder instead)", "yellow")
+            continue
+        app.autosave_root = str(attempt)
+        if not quiet:
+            app.renderer.out(f"Saved: {target}   (type /saved to open the folder)", "dim")
+        return target
+    app.renderer.out("(could not save a copy of this chat anywhere - check your disk)", "red")
+    return None
 
 
 def selection(args: argparse.Namespace, app: App) -> Selection:
@@ -615,15 +632,55 @@ def cmd_iterate(app: App, args: argparse.Namespace) -> int:
 
 
 SHARE_CHOICES = {"1": "none", "2": "review", "3": "answers"}
-SHARE_TEXT = {"none": "just your message", "review": "your message + the comparison",
-              "answers": "your message + the comparison + every answer"}
+SHARE_TEXT = {"none": "just your message", "review": "your message plus the comparison",
+              "answers": "your message plus the comparison plus every AI's full answer"}
 NEXT_MENU = """\
-What should each AI get with your next message? (no AI ever sees who wrote what)
-  1  just my message
-  2  my message + the comparison                      [Enter]
-  3  my message + the comparison + every AI's full answer
+What should each AI get with your next message?
+  1  just your message
+  2  your message plus the comparison  (press Enter for this one)
+  3  your message plus the comparison plus every AI's full answer
   4  choose separately for each AI
-  x  back to the normal prompt (new question, /new, /help ...)"""
+  x  go back to asking a fresh question
+(No AI ever sees which AI wrote what.)"""
+
+
+def read_message(prompt: str) -> str:
+    """Several lines allowed: type or paste, then press Enter on an empty line to send."""
+    lines: list[str] = []
+    while True:
+        chunk = read_block(prompt if not lines else "  ")
+        if not chunk.strip():
+            if lines:
+                return "\n".join(lines).strip()
+            return ""
+        lines.append(chunk)
+
+
+def _gist(text: str | None, width: int = 110) -> str:
+    for line in (text or "").splitlines():
+        line = re.sub(r"[#*_>`]+", "", line).strip()
+        if line:
+            return line if len(line) <= width else line[: width - 1] + "..."
+    return ""
+
+
+def clean_screen(app: App, ctx: Ctx, rnd: Any, analysis: Any) -> None:
+    """A clean screen to type into: a short recap, where it's saved, and the options."""
+    r = app.renderer
+    if r.mode == "rich":
+        r.console.clear()
+    r.out(f"{ctx.chat.name} - round {rnd.seq} done  (scroll up for the full answers and comparison)", "bold")
+    for run in app.store.runs_for_round(rnd.id):
+        if run.status == RunStatus.SKIPPED:
+            continue
+        mark = "✓" if run.status == RunStatus.COMPLETE else "✕"
+        r.out(f"  {mark} {r.name(run.provider)}: {_gist(run.output_text) or run.status.value}")
+    if analysis is not None and analysis.result and analysis.result.get("summary"):
+        r.out(f"  Comparison: {_gist(str(analysis.result['summary']), 140)}", "cyan")
+    if (root := saved_root(app)) and not app.config.demo:
+        r.out(f"  Saved in: {root}   (/saved opens it)", "dim")
+    r.out("")
+    r.out(NEXT_MENU)
 
 
 def next_step(app: App) -> None:
@@ -637,7 +694,8 @@ def next_step(app: App) -> None:
             return
         rnd = lin[-1]
         if len(app.engine.completed_runs(rnd)) < 2:
-            return  # nothing to compare
+            r.out("(Fewer than 2 answers this round, so there's nothing to compare. Type your next question below.)", "dim")
+            return
         done_before = [a for a in app.store.analyses_for_round(rnd.id) if a.result and a.kind != "synthesis"]
         analysis = done_before[-1] if done_before else None
         if analysis is None:
@@ -651,21 +709,29 @@ def next_step(app: App) -> None:
             except KeyboardInterrupt:
                 drain_input()
                 r.out("comparison skipped", "yellow")
-            autosave(app, ctx)
+            autosave(app, ctx, quiet=True)
             if analysis is not None and not analysis.result:
                 analysis = None
+            try:
+                if read_block("\nRead the answers above. Press Enter for a clean screen to type your next message "
+                              "(or x for a fresh question): ").strip().lower().startswith("x"):
+                    return
+            except (EOFError, KeyboardInterrupt):
+                return
+        clean_screen(app, ctx, rnd, analysis)
         lanes = [t.provider for t in app.engine.plan_targets(ctx.chat, Selection()) if t.included]
-        r.out(NEXT_MENU)
         try:
-            choice = read_block("choose: ").strip().lower() or "2"
+            choice = read_block("choose 1, 2, 3, 4 or x: ").strip().lower() or "2"
         except (EOFError, KeyboardInterrupt):
             return
         if choice.startswith(("x", "q", "/")):
+            r.out("OK - type a fresh question below (or /help).", "dim")
             return
         if choice == "4":
             share = {}
             for pid in lanes:
-                c = read_block(f"  {r.name(pid)}: 1 just my message / 2 + comparison / 3 + comparison & answers [2]: ").strip()
+                c = read_block(f"  {r.name(pid)}: 1 just your message / 2 plus comparison / 3 plus comparison and answers "
+                               "[Enter = 2]: ").strip()
                 share[pid] = SHARE_CHOICES.get(c or "2", "review")
         elif choice in SHARE_CHOICES:
             share = {pid: SHARE_CHOICES[choice] for pid in lanes}
@@ -675,8 +741,10 @@ def next_step(app: App) -> None:
         if analysis is None and any(v != "none" for v in share.values()):
             r.out("there's no comparison to share this round, so each AI gets just your message", "yellow")
             share = {pid: "none" for pid in lanes}
+        r.out("\nYour message - type or paste it. Press Enter on an empty line when you're done.\n"
+              "(Leave it empty and press Enter to just ask them to revise their answers.)", "bold")
         try:
-            note = read_block("Your message (paste or type; Enter alone = \"Give your revised answer in full.\"):\n› ").strip()
+            note = read_message("› ")
         except (EOFError, KeyboardInterrupt):
             return
         for pid in lanes:
@@ -756,6 +824,7 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("-P", "--project", default=S, help="project (default: current)")
     g.add_argument("-c", "--chat", "-s", "--session", dest="chat", default=S, help="chat (default: current)")
     g.add_argument("--demo", action="store_true", default=S, help="fake lanes and a separate demo database")
+    g.add_argument("--version", action="version", version=f"cockpit {__version__}")
     g.add_argument("--home", default=S, help="directory for config + data (or COCKPIT_HOME)")
     g.add_argument("--config", default=S, help="path to config.toml")
     g.add_argument("--plain", dest="mode", action="store_const", const="plain", default=S)

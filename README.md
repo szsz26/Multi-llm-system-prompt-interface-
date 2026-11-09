@@ -129,19 +129,19 @@ Synthesis only runs when you ask for it.
 
 Interactive mode: run `cockpit`, then type prompts, or `/help` for slash commands (`/mute grok`, `/only claude,gemini ...`, `/iterate`, `/edit 3 ...`).
 
-**After every round (interactive mode)**, Cockpit compares the answers with a blind judge and shows you the result with names. Then it asks what each AI should get with your next message:
+**After every round (interactive mode)**, Cockpit compares the answers with a blind judge and shows you the result with names. Press Enter and you get a **clean screen**: a one-line recap per AI, where the chat is saved, and these options (also shown as a reminder at every prompt):
 
-| Choice | What each AI gets |
+| Choice | What each AI gets with your next message |
 |---|---|
 | 1 | just your message |
-| 2 (Enter) | your message + the comparison (anonymous) |
-| 3 | your message + the comparison + every AI's full answer (anonymous) |
-| 4 | you choose 1, 2 or 3 separately for each AI |
-| x | nothing; back to the normal prompt |
+| 2 (Enter) | your message plus the comparison |
+| 3 | your message plus the comparison plus every AI's full answer |
+| 4 | choose separately for each AI |
+| x | nothing; go back to asking a fresh question |
 
-Nothing is sent until you type your message and confirm, so rounds never run on by themselves. `/guide off` turns this off. Pasting several lines sends them as **one** prompt, and Ctrl-C stops a round and throws away anything typed meanwhile.
+No AI ever sees which AI wrote what. Then type or paste your message (several lines are fine) and press Enter on an empty line. Nothing is sent until you confirm, so rounds never run on by themselves. `/guide off` turns this off, `/clear` cleans the screen. Pasting several lines at the normal prompt sends them as **one** prompt, and Ctrl-C stops a round and throws away anything typed meanwhile.
 
-**Your saved copy.** These conversations do not appear in the ChatGPT, Claude or Grok apps' history: the official command-line tools Cockpit uses don't write there. Instead, Cockpit keeps a readable copy of every chat in `~/Documents/LLM Cockpit/<project>/chats/<chat>/` (`chat.md` plus per-round files, comparisons and what each AI was sent), refreshed after every round. Change or turn it off with `autosave_dir` in `config.toml`.
+**Your saved copy.** These conversations do not appear in the ChatGPT, Claude or Grok apps' history: the official command-line tools Cockpit uses don't write there. Instead, after every round Cockpit saves a readable copy in **Documents → LLM Cockpit**: `<topic>.md` (the whole conversation) plus a folder with every round, comparison and exactly what each AI was sent. Type `/saved` to open that folder. If your Mac doesn't let Terminal into Documents, Cockpit saves to **LLM Cockpit** in your home folder instead and says so. Start a separate topic with `/chat use <topic>`; each topic is its own file. Change or turn saving off with `autosave_dir` in `config.toml`.
 
 ## Commands
 
@@ -184,4 +184,4 @@ Global flags: `-P/--project`, `-c/--chat`, `--demo`, `--plain`, `--json`, `--raw
 pytest
 ```
 
-135 tests run on fake lanes and mocked HTTP, so they cost nothing. They cover isolation, round and branch integrity, mute vs. one-shot selection, stop/retry/rerun, judge isolation, blind labels, false consensus (the spec's §54 fixtures), feedback editing and disclosure, the API billing guard, every parser, CLI transports (via fake `claude`, `codex` and `grok` binaries), migrations, file permissions and secure deletion.
+136 tests run on fake lanes and mocked HTTP, so they cost nothing. They cover isolation, round and branch integrity, mute vs. one-shot selection, stop/retry/rerun, judge isolation, blind labels, false consensus (the spec's §54 fixtures), feedback editing and disclosure, the API billing guard, every parser, CLI transports (via fake `claude`, `codex` and `grok` binaries), migrations, file permissions and secure deletion.

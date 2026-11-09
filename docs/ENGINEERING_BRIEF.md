@@ -1,10 +1,10 @@
-# LLM Cockpit: engineering review brief (v0.4.0)
+# LLM Cockpit: engineering review brief (v0.4.1)
 
 ## 1. What it is
 A local, single-process tool. One prompt goes to several AI "lanes" at once (Claude, ChatGPT/Codex, Grok, Perplexity, optionally Gemini). Each lane keeps its own isolated conversation. Cockpit then compares the answers, runs a blind judge, and sends user-reviewed feedback back. Its goal is to replace manually copy-pasting between the vendors' chat apps, and to use the user's existing **subscriptions** rather than paid APIs wherever an official path exists.
 
 - **Stack:** Python 3.11+, SQLite (stdlib), `httpx`, `rich`. No server, queue or Docker.
-- **Size:** ~7,250 lines across 25 modules in `src/cockpit/`; 135 tests in `tests/`.
+- **Size:** ~7,250 lines across 25 modules in `src/cockpit/`; 136 tests in `tests/`.
 - **Interface:** CLI first (`cockpit ...`), plus an interactive shell (`cockpit`) that uses the same handlers. The engine is UI-agnostic and event-driven, so a web UI can sit on top later.
 - **Code:** delivered as the archive `llm-cockpit-v0.3.2.tar.gz` (not yet in a git repo).
 
@@ -83,7 +83,7 @@ Native vendor sessions are a cache. Cockpit's tree is the source of truth; a nat
 - **Grok:** answers may rest on X posts.
 
 ## 9. Testing
-135 tests, no network, $0 cost.
+136 tests, no network, $0 cost.
 
 | File | Tests | Covers |
 |---|---|---|
@@ -96,7 +96,7 @@ Native vendor sessions are a cache. Cockpit's tree is the source of truth; a nat
 | `test_manual_lane.py` | 9 | Perplexity helper |
 | `test_cli_transports.py` | 9 | fake `claude` / `codex` / `grok` binaries assert argv, stdin, env stripping, resume, fallback |
 | `test_parsers.py` | 30 | every stream parser, using real captured output where available |
-| `test_next_round.py` | 5 | per-lane next round, paste stays one prompt, export shows what each AI was sent |
+| `test_next_round.py` | 6 | per-lane next round, paste stays one prompt, export shows what each AI was sent |
 | `test_store_security_cli.py` | 10 | migration, permissions, CLI end-to-end |
 
 **Live runs in this session (real subscriptions):**
@@ -119,7 +119,7 @@ Native vendor sessions are a cache. Cockpit's tree is the source of truth; a nat
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
 cockpit --demo          # fake lanes, no accounts needed
-pytest                  # 135 tests
+pytest                  # 136 tests
 cockpit doctor --live   # real lanes: install and sign in to each CLI first
 ```
 

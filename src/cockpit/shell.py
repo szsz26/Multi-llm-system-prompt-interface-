@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import argparse
 import shlex
+import shutil
+import subprocess
+import sys
 from typing import Any
 
 from rich.text import Text
@@ -17,6 +20,9 @@ Type a prompt to send it to every active lane (each keeps its own context). Past
 lines sends them as ONE prompt. After each round Cockpit compares the answers and asks what each
 AI should get with your next message; nothing is sent until you confirm.
   /guide off|on               turn that after-round comparison + menu off or on
+  /saved                      open the folder with your saved chats (a readable copy after every round)
+  /clear                      clean screen
+  /chat use <topic>           start or switch to a separate conversation (saved as <topic>.md)
   /new <prompt>               fresh lane context (blast)
   /only claude,gemini <p>     one-round subset (not persisted)     /except grok <p>
   /lane claude <p>            one lane only
@@ -47,6 +53,9 @@ def _header(app: Any) -> Text:
     for row in app.engine.overview(ctx):
         mark, style = ("[x]", "green") if row["enabled"] else ("[ ]", "dim")
         t.append(f"{mark} {row['name']}  ", style=style)
+    if app.guide:
+        t.append("\nAfter each round you choose what each AI gets next: 1 just your message · 2 plus the comparison"
+                 " · 3 plus comparison and every answer · 4 choose per AI · x fresh question.   /saved  /help", style="dim")
     return t
 
 
@@ -105,6 +114,22 @@ def run_shell(app: Any, parser: argparse.ArgumentParser) -> int:
             con.print()
             break
         if not line:
+            continue
+        if line.split()[0] == "/saved":
+            from .cli import saved_root
+
+            root = saved_root(app)
+            if root is None:
+                con.print("saving copies is turned off (autosave_dir in config.toml)", markup=False)
+            else:
+                root.mkdir(parents=True, exist_ok=True)
+                con.print(f"Your saved chats: {root}", markup=False)
+                opener = "open" if sys.platform == "darwin" else "xdg-open"
+                if shutil.which(opener):
+                    subprocess.run([opener, str(root)], check=False)
+            continue
+        if line.split()[0] == "/clear":
+            con.clear()
             continue
         if line.split()[0] == "/guide":
             app.guide = not line.endswith("off")
