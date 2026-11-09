@@ -13,7 +13,10 @@ from typing import Any
 from rich.text import Text
 
 HELP = """\
-Type a prompt to send it to every active lane (each keeps its own context).
+Type a prompt to send it to every active lane (each keeps its own context). Pasting several
+lines sends them as ONE prompt. After each round Cockpit compares the answers and asks what each
+AI should get with your next message; nothing is sent until you confirm.
+  /guide off|on               turn that after-round comparison + menu off or on
   /new <prompt>               fresh lane context (blast)
   /only claude,gemini <p>     one-round subset (not persisted)     /except grok <p>
   /lane claude <p>            one lane only
@@ -47,6 +50,11 @@ def _header(app: Any) -> Text:
     return t
 
 
+def _last_round(app: Any) -> int:
+    lin = app.engine.lineage(app.ctx())
+    return lin[-1].seq if lin else 0
+
+
 def to_argv(line: str) -> list[str] | None:
     """Translate one shell line to CLI argv. None means quit."""
     if not line.startswith("/"):
@@ -72,7 +80,7 @@ def to_argv(line: str) -> list[str] | None:
 
 
 def run_shell(app: Any, parser: argparse.ArgumentParser) -> int:
-    from .cli import dispatch
+    from .cli import dispatch, drain_input, next_step, read_block
 
     try:
         import readline
@@ -92,11 +100,15 @@ def run_shell(app: Any, parser: argparse.ArgumentParser) -> int:
     while True:
         con.print(_header(app))
         try:
-            line = input("› ").strip()
+            line = read_block("› ").strip()  # a multi-line paste stays ONE prompt
         except (EOFError, KeyboardInterrupt):
             con.print()
             break
         if not line:
+            continue
+        if line.split()[0] == "/guide":
+            app.guide = not line.endswith("off")
+            con.print(f"after-round comparison + menu: {'on' if app.guide else 'off'}", markup=False)
             continue
         if line in ("/help", "/?", "help"):
             con.print(HELP, markup=False)
@@ -116,7 +128,12 @@ def run_shell(app: Any, parser: argparse.ArgumentParser) -> int:
             continue
         if getattr(args, "func", None) is None:
             continue
-        dispatch(app, args)
+        before = _last_round(app)
+        code = dispatch(app, args)
+        if code == 130:
+            drain_input()  # Ctrl-C: drop anything typed/pasted meanwhile so it can't start new rounds
+        elif app.guide and _last_round(app) > before and app.renderer.mode != "json":
+            next_step(app)  # compare, then you choose what each AI gets; nothing runs on its own
         # project/chat switches made inside the shell become the shell's context
         app.project_override = app.store.get_meta("current_project") or app.project_override
         app.chat_override = app.store.get_meta("current_chat") or app.chat_override

@@ -385,8 +385,9 @@ class Cockpit:
                                   approved_this_run=allow_api)
         return reason
 
-    def _plan_runs(self, ctx: Ctx, rnd: Round, targets: list[Target], input_text: str, *, fresh: bool,
-                   force: bool, allow_api: bool, sink: EventSink) -> list[RunPlan]:
+    def _plan_runs(self, ctx: Ctx, rnd: Round, targets: list[Target], default_input: str, *, fresh: bool,
+                   force: bool, allow_api: bool, sink: EventSink,
+                   per_lane: dict[str, str] | None = None) -> list[RunPlan]:
         plans: list[RunPlan] = []
         skipped: dict[str, str] = {}
 
@@ -399,6 +400,7 @@ class Cockpit:
             if not t.included:
                 skip(pid, t.reason or "skipped")
                 continue
+            input_text = (per_lane or {}).get(pid, default_input)  # a lane may get its own message this round
             head = self.store.get_head(ctx.branch.id, pid)
             ctx_head = None if fresh else head.head_message_id
             history = self.store.history(ctx.chat.id, pid, ctx_head)
@@ -986,3 +988,62 @@ class Cockpit:
         self.store.update_packet(pk.id, status="sent", sent_round_id=rnd.id, instruction=instr)
         plans = self._plan_runs(ctx, rnd, targets, message, fresh=False, force=True, allow_api=allow_api, sink=sink)
         return await self._execute(ctx, rnd, plans, sink, first=first)
+
+    SHARE_LEVELS = ("none", "review", "answers")
+
+    async def send_next(self, ctx: Ctx, note: str | None, share: dict[str, str], *, analysis_id: int | None = None,
+                        selection: Selection | None = None, allow_api: bool = False,
+                        sink: EventSink = _noop) -> RoundResult:
+        """The next round, where each lane gets your message plus what YOU chose to share with it:
+        'none' = just your message, 'review' = the anonymized comparison of the last round,
+        'answers' = the comparison plus every answer from the last round (anonymized).
+        All lanes run in ONE round, so the following comparison still compares like with like."""
+        note = (note or "").strip() or None
+        src = self.round(ctx)
+        analysis = self.store.get_analysis(analysis_id) if analysis_id is not None else None
+        if analysis is not None and analysis.round_id != src.id:
+            raise CockpitError(f"that comparison is for an older round, not round {src.seq}")
+        ineligible = self.feedback_eligibility(ctx, src)
+        done = {r.id: r for r in self.completed_runs(src)}
+        packets: dict[str, FeedbackPacket] = {}
+
+        def packet_for(level: str) -> FeedbackPacket:
+            if level not in packets:
+                if analysis is None or not analysis.result or analysis.kind == "synthesis":
+                    raise CockpitError("there is no comparison of the last round to share; choose 'just my message'")
+                disc = Disclosure.EVERYTHING if level == "answers" else Disclosure.ANONYMIZED
+                chosen = ([done[v["run_id"]] for v in analysis.label_map.values() if v["run_id"] in done]
+                          if level == "answers" else [])
+                packets[level] = self.store.create_packet(
+                    chat_id=ctx.chat.id, round_id=src.id, analysis_id=analysis.id, disclosure=disc.value,
+                    included=[r.provider for r in chosen],
+                    content=render_packet(analysis.result, disc, list(analysis.label_map), chosen), instruction=note)
+            return packets[level]
+
+        targets = self.plan_targets(ctx.chat, selection or Selection())
+        per_lane: dict[str, str] = {}
+        planned: list[Target] = []
+        for t in targets:
+            level = share.get(t.provider, "none")
+            if level not in self.SHARE_LEVELS:
+                raise CockpitError(f"unknown share level {level!r} for {t.provider}")
+            if t.included and level != "none" and t.provider in ineligible:
+                level = "none"  # it did not answer the round being reviewed: it only gets your message
+            if t.included and level != "none":
+                per_lane[t.provider] = compose_message(packet_for(level).content, note)
+            elif t.included and note:
+                per_lane[t.provider] = note
+            elif t.included:
+                t = Target(t.provider, False, "nothing to send it (no message and nothing shared)")
+            planned.append(t)
+        if not per_lane:
+            raise CockpitError("nothing to send: type a message or share the comparison with at least one AI")
+        kind = RoundKind.FEEDBACK if packets else RoundKind.FOLLOWUP
+        first_pk = next(iter(packets.values()), None)
+        rnd = self.store.create_round(ctx.chat.id, ctx.branch.id, kind.value, note or DEFAULT_INSTRUCTION,
+                                      feedback_packet_id=first_pk.id if first_pk else None)
+        for pk in packets.values():
+            self.store.update_packet(pk.id, status="sent", sent_round_id=rnd.id, instruction=note)
+        plans = self._plan_runs(ctx, rnd, planned, note or DEFAULT_INSTRUCTION, fresh=False, force=True,
+                                allow_api=allow_api, sink=sink, per_lane=per_lane)
+        return await self._execute(ctx, rnd, plans, sink)

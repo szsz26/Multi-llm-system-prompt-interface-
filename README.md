@@ -129,6 +129,20 @@ Synthesis only runs when you ask for it.
 
 Interactive mode: run `cockpit`, then type prompts, or `/help` for slash commands (`/mute grok`, `/only claude,gemini ...`, `/iterate`, `/edit 3 ...`).
 
+**After every round (interactive mode)**, Cockpit compares the answers with a blind judge and shows you the result with names. Then it asks what each AI should get with your next message:
+
+| Choice | What each AI gets |
+|---|---|
+| 1 | just your message |
+| 2 (Enter) | your message + the comparison (anonymous) |
+| 3 | your message + the comparison + every AI's full answer (anonymous) |
+| 4 | you choose 1, 2 or 3 separately for each AI |
+| x | nothing; back to the normal prompt |
+
+Nothing is sent until you type your message and confirm, so rounds never run on by themselves. `/guide off` turns this off. Pasting several lines sends them as **one** prompt, and Ctrl-C stops a round and throws away anything typed meanwhile.
+
+**Your saved copy.** These conversations do not appear in the ChatGPT, Claude or Grok apps' history: the official command-line tools Cockpit uses don't write there. Instead, Cockpit keeps a readable copy of every chat in `~/Documents/LLM Cockpit/<project>/chats/<chat>/` (`chat.md` plus per-round files, comparisons and what each AI was sent), refreshed after every round. Change or turn it off with `autosave_dir` in `config.toml`.
+
 ## Commands
 
 | Area | Commands |
@@ -170,4 +184,4 @@ Global flags: `-P/--project`, `-c/--chat`, `--demo`, `--plain`, `--json`, `--raw
 pytest
 ```
 
-130 tests run on fake lanes and mocked HTTP, so they cost nothing. They cover isolation, round and branch integrity, mute vs. one-shot selection, stop/retry/rerun, judge isolation, blind labels, false consensus (the spec's §54 fixtures), feedback editing and disclosure, the API billing guard, every parser, CLI transports (via fake `claude`, `codex` and `grok` binaries), migrations, file permissions and secure deletion.
+135 tests run on fake lanes and mocked HTTP, so they cost nothing. They cover isolation, round and branch integrity, mute vs. one-shot selection, stop/retry/rerun, judge isolation, blind labels, false consensus (the spec's §54 fixtures), feedback editing and disclosure, the API billing guard, every parser, CLI transports (via fake `claude`, `codex` and `grok` binaries), migrations, file permissions and secure deletion.

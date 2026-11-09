@@ -127,6 +127,7 @@ class CockpitConfig:
     pricing: dict[str, Pricing] = field(default_factory=dict)
     api: ApiDefaults = field(default_factory=ApiDefaults)
     demo: bool = False
+    autosave_dir: str | None = "~/Documents/LLM Cockpit"  # readable copy of every chat, refreshed after each round
 
     @property
     def provider_ids(self) -> list[str]:
@@ -259,6 +260,7 @@ def load_config(config_path: Path | None = None, *, demo: bool = False, home: Pa
         system_prompt=defaults.get("system_prompt") or None,
         min_responses_for_analysis=int(defaults.get("min_responses_for_analysis", 2)),
         pricing=pricing, api=api, demo=demo,
+        autosave_dir=(str(defaults["autosave_dir"]) or None) if "autosave_dir" in defaults else "~/Documents/LLM Cockpit",
     )
     if cfg.judge not in providers:
         cfg.judge = next(iter(providers), "claude")
@@ -271,6 +273,7 @@ CONFIG_TEMPLATE = """\
 
 [defaults]
 judge = "claude"             # default judge / analyzer / synthesizer (switch any time with --judge)
+autosave_dir = "~/Documents/LLM Cockpit"   # readable copy of every chat after each round ("" turns it off)
 timeout = 600                # seconds per lane run
 idle_timeout = 180           # seconds with no output before a run is treated as stalled
 max_retries = 1              # one visible retry, only for transient errors before any output

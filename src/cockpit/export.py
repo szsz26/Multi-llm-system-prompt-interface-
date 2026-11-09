@@ -42,7 +42,10 @@ def _round_md(app: Any, r: Any) -> str:
             out.append(f"{head} ({run.skip_reason})\n")
             continue
         out.append(f"{head} · {run.model_reported or run.model_requested} · {run.transport}/{run.billing}\n")
-        out.append((run.raw_output or f"_{run.error_kind}: {run.error_message}_") + "\n")
+        if run.input_text and run.input_text.strip() != (r.prompt or "").strip():
+            sent = run.input_text.strip().replace("\n", "\n> ")
+            out.append(f"<details><summary>What {app.renderer.name(run.provider)} was sent</summary>\n\n> {sent}\n\n</details>\n")
+        out.append((run.output_text or run.raw_output or f"_{run.error_kind}: {run.error_message}_") + "\n")
     return "\n".join(out)
 
 
