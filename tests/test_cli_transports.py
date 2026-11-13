@@ -121,17 +121,21 @@ def test_prompt_handling_and_hardening(env):
     assert c["argv"][c["argv"].index("--tools") + 1] == "WebSearch,WebFetch" and "--strict-mcp-config" in c["argv"]
     assert c["argv"][c["argv"].index("--allowedTools") + 1] == "WebSearch WebFetch"
     assert c["argv"][c["argv"].index("--max-turns") + 1] == "8"
-    assert c["argv"][c["argv"].index("--system-prompt") + 1] == "You are a helpful assistant."
+    from cockpit.config import DEFAULT_CHAT_STYLE
+
+    assert c["argv"][c["argv"].index("--system-prompt") + 1] == DEFAULT_CHAT_STYLE  # visible chat-style instruction
     assert c["cwd"] == str(home / "workspaces" / "claude")
     x = calls("codex")[0]
     assert x["stdin"] == DANGEROUS and x["argv"][-1] == "-"
     assert x["argv"][0] == "--search" and x["argv"][1] == "exec"  # global flag must precede `exec`
     assert x["argv"][x["argv"].index("-s") + 1] == "read-only" and x["argv"][x["argv"].index("-C") + 1] == str(home / "workspaces" / "openai")
     assert "-m" not in x["argv"]  # model "default": Codex picks (and reports) its own default
+    assert f"developer_instructions={json.dumps(DEFAULT_CHAT_STYLE)}" in x["argv"]
     g = calls("grok")[0]
     assert g["stdin"] == DANGEROUS and all("whoami" not in a for a in g["argv"])  # prompt via private file
     assert g["argv"][g["argv"].index("--tools") + 1] == "web_search,web_fetch" and "--disable-web-search" not in g["argv"]
     assert g["argv"][g["argv"].index("--allow") + 1] == "web_fetch"  # pre-approved: headless runs can't ask
+    assert g["argv"][g["argv"].index("--system-prompt-override") + 1] == DEFAULT_CHAT_STYLE
     assert g["cwd"] == str(home / "workspaces" / "grok")
     assert not list((home / "workspaces" / ".prompts").glob("*"))  # prompt file removed afterwards
 

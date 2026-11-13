@@ -73,7 +73,7 @@ BUILTIN_PROVIDERS: list[ProviderConfig] = [
         strip_env=["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
     ),
     ProviderConfig(
-        id="openai", kind="openai", display_name="OpenAI", model="default", api_model="gpt-5.5",
+        id="openai", kind="openai", display_name="ChatGPT", model="default", api_model="gpt-5.5",
         transport="codex", api_key_env=["OPENAI_API_KEY"], aliases=["chatgpt", "gpt"],
         strip_env=["OPENAI_API_KEY", "CODEX_API_KEY"],
     ),
@@ -115,6 +115,20 @@ class ApiDefaults:
     mode: str = "per-run"  # "per-run" | "until-disabled"
 
 
+# Sent to every AI (never to judges) so answers come back as they would in a chat app instead of
+# terse terminal replies. Visible and editable: `chat_style` under [defaults] in config.toml ("" = off).
+DEFAULT_CHAT_STYLE = (
+    "Answer the way you would in your chat app, for someone reading in a rich viewer, not a terminal. "
+    "Give a complete, well-organized answer in Markdown: headings, lists and tables where they help, "
+    "and LaTeX inside \\( \\) or \\[ \\] for math. Do not narrate what you are about to do. "
+    "When a standalone piece would genuinely help - a web page or small interactive tool, a chart, a diagram, "
+    "a drawing, or a long document - include it as an artifact: one fenced code block labelled "
+    "html (a complete self-contained page with a <title>; load libraries only from cdnjs.cloudflare.com, "
+    "cdn.jsdelivr.net or unpkg.com), svg (with a <title>), mermaid (first line `%% title: ...`; prefer top-to-bottom layouts), "
+    "or markdown (starting with a # title). The viewer shows each one as a live preview."
+)
+
+
 @dataclass
 class CockpitConfig:
     home: Path
@@ -128,6 +142,8 @@ class CockpitConfig:
     api: ApiDefaults = field(default_factory=ApiDefaults)
     demo: bool = False
     autosave_dir: str | None = "~/Documents/LLM Cockpit"  # readable copy of every chat, refreshed after each round
+    reader: bool = True  # also keep a formatted reader page there and show it in the browser
+    chat_style: str | None = DEFAULT_CHAT_STYLE
 
     @property
     def provider_ids(self) -> list[str]:
@@ -161,7 +177,8 @@ class CockpitConfig:
 
     def system_prompt_for(self, pid: str) -> str | None:
         p = self.providers[pid]
-        return p.system_prompt if p.system_prompt is not None else self.system_prompt
+        own = p.system_prompt if p.system_prompt is not None else self.system_prompt
+        return "\n\n".join(x for x in (self.chat_style, own) if x) or None
 
     def workdir(self, pid: str) -> Path:
         """Empty, dedicated working directory for agent CLIs (never the user's repo)."""
@@ -261,6 +278,8 @@ def load_config(config_path: Path | None = None, *, demo: bool = False, home: Pa
         min_responses_for_analysis=int(defaults.get("min_responses_for_analysis", 2)),
         pricing=pricing, api=api, demo=demo,
         autosave_dir=(str(defaults["autosave_dir"]) or None) if "autosave_dir" in defaults else "~/Documents/LLM Cockpit",
+        reader=bool(defaults.get("reader", True)),
+        chat_style=(str(defaults["chat_style"]).strip() or None) if "chat_style" in defaults else DEFAULT_CHAT_STYLE,
     )
     if cfg.judge not in providers:
         cfg.judge = next(iter(providers), "claude")
@@ -274,6 +293,9 @@ CONFIG_TEMPLATE = """\
 [defaults]
 judge = "claude"             # default judge / analyzer / synthesizer (switch any time with --judge)
 autosave_dir = "~/Documents/LLM Cockpit"   # readable copy of every chat after each round ("" turns it off)
+reader = true                # formatted reader page in your browser (answers, tables, artifacts); false = read in the terminal
+# chat_style = "..."         # the VISIBLE instruction every AI gets so it answers like in its chat app.
+                             # See it with `cockpit status`; set your own text here, or "" to send none.
 timeout = 600                # seconds per lane run
 idle_timeout = 180           # seconds with no output before a run is treated as stalled
 max_retries = 1              # one visible retry, only for transient errors before any output

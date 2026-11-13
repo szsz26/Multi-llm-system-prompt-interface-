@@ -20,6 +20,8 @@ Type a prompt to send it to every active lane (each keeps its own context). Past
 lines sends them as ONE prompt. After each round Cockpit compares the answers and asks what each
 AI should get with your next message; nothing is sent until you confirm.
   /guide off|on               turn that after-round comparison + menu off or on
+  /read                       open the reader page: this chat formatted like a chat app, in your browser
+  /reader off|on              read answers here in the terminal instead of on the reader page (or back)
   /saved                      open the folder with your saved chats (a readable copy after every round)
   /clear                      clean screen
   /chat use <topic>           start or switch to a separate conversation (saved as <topic>.md)
@@ -55,7 +57,7 @@ def _header(app: Any) -> Text:
         t.append(f"{mark} {row['name']}  ", style=style)
     if app.guide:
         t.append("\nAfter each round you choose what each AI gets next: 1 just your message · 2 plus the comparison"
-                 " · 3 plus comparison and every answer · 4 choose per AI · x fresh question.   /saved  /help", style="dim")
+                 " · 3 plus comparison and every answer · 4 choose per AI · x fresh question.   /read  /saved  /help", style="dim")
     return t
 
 
@@ -127,6 +129,11 @@ def run_shell(app: Any, parser: argparse.ArgumentParser) -> int:
                 opener = "open" if sys.platform == "darwin" else "xdg-open"
                 if shutil.which(opener):
                     subprocess.run([opener, str(root)], check=False)
+            continue
+        if line.split()[0] == "/reader":
+            app.reader_on = not line.endswith("off")
+            con.print("answers are shown " + ("on the reader page in your browser" if app.reader_on else "here in the terminal"),
+                      markup=False)
             continue
         if line.split()[0] == "/clear":
             con.clear()

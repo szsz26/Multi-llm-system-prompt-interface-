@@ -27,7 +27,7 @@ def test_each_ai_gets_what_you_chose_in_one_round(harness):
     assert ANTI_CONVERGENCE in got["openai"] and got["openai"].endswith("Now assume no bank account.")
     assert not any(secret(p) in got["openai"] for p in share)  # comparison only, no full answers
     assert all(secret(p) in got["grok"] for p in share)  # every full answer, anonymized
-    assert not any(n in got["grok"] for n in ("Claude", "OpenAI", "Grok"))
+    assert not any(n in got["grok"] for n in ("Claude", "OpenAI", "ChatGPT", "Grok"))
     assert len({r.round_id for r in res.runs}) == 1  # one round: the next comparison compares like with like
 
 

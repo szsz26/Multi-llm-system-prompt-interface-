@@ -37,6 +37,9 @@ class App:
     interactive: bool = False
     autosave_root: str | None = None  # where copies actually got saved (falls back if Documents is blocked)
     guide: bool = True  # shell: after each round, compare and ask what each AI gets next
+    reader_on: bool = True  # shell: read answers on the reader page in the browser (/reader off = in the terminal)
+    reader_page: str | None = None  # the reader page for the current chat, once written
+    reader_shown: bool = False  # the browser was opened on it this session
 
     @property
     def project_name(self) -> str:
@@ -102,14 +105,48 @@ def drain_input() -> None:
 
 def saved_root(app: App) -> Path | None:
     folder = app.config.autosave_dir
-    return Path(app.autosave_root or folder).expanduser() if folder else None
+    if not folder:
+        return None
+    if app.config.demo and not app.autosave_root:
+        return app.config.home / "saved"  # demo chats never go into your Documents
+    return Path(app.autosave_root or folder).expanduser()
 
 
-def autosave(app: App, ctx: Ctx, quiet: bool = False) -> Path | None:
+def open_page(path: Path) -> bool:
+    """Show a saved page in the default browser. False when there is no browser to open (or under tests)."""
+    if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("COCKPIT_NO_BROWSER"):
+        return False
+    from .providers.manual import ManualIO
+
+    return ManualIO().open_url(path.as_uri())
+
+
+def reading(app: App) -> bool:
+    """True when answers are meant to be read on the reader page rather than in the terminal."""
+    return bool(app.reader_on and app.config.reader and app.interactive and app.renderer.mode == "rich"
+                and app.config.autosave_dir)
+
+
+def _reader_page(app: App, ctx: Ctx, root: Path, name: str) -> Path | None:
+    if not app.config.reader:
+        return None
+    from .reader import build_reader
+
+    try:
+        return build_reader(app, ctx, root, name)
+    except OSError:
+        raise
+    except Exception as e:  # noqa: BLE001 - a display problem must never break a round
+        log.event("reader_failed", error=f"{type(e).__name__}: {e}")
+        app.renderer.out(f"(could not build the reader page: {type(e).__name__}: {e})", "yellow")
+        return None
+
+
+def autosave(app: App, ctx: Ctx, quiet: bool = False, force: bool = False) -> Path | None:
     """Keep a readable copy of the chat (answers, comparisons, what each AI was sent) in a normal folder:
-    <folder>/<topic>.md for reading, plus <folder>/<project>/chats/<topic>/ with every detail."""
+    <folder>/<topic>.md and <topic>.html (the reader page), plus <folder>/<project>/chats/<topic>/ with every detail."""
     root = saved_root(app)
-    if root is None or app.config.demo or app.renderer.mode == "json" or not (app.interactive or sys.stdout.isatty()):
+    if root is None or (not force and (app.renderer.mode == "json" or not (app.interactive or sys.stdout.isatty()))):
         return None
     from .export import export_dir, export_text
 
@@ -121,13 +158,20 @@ def autosave(app: App, ctx: Ctx, quiet: bool = False) -> Path | None:
             export_dir(app, ctx, attempt)
             target = attempt / f"{name}.md"
             write_private(target, export_text(app, ctx, "md"))
+            page = _reader_page(app, ctx, attempt, name)
         except OSError as e:  # e.g. macOS hasn't allowed Terminal into Documents
             if attempt == root:
                 app.renderer.out(f"(can't save into {root}: {e.strerror or e}; saving in your home folder instead)", "yellow")
             continue
         app.autosave_root = str(attempt)
+        app.reader_page = str(page) if page else None
+        if page and reading(app) and not app.reader_shown:
+            app.reader_shown = open_page(page)
         if not quiet:
-            app.renderer.out(f"Saved: {target}   (type /saved to open the folder)", "dim")
+            if page and app.reader_shown:
+                app.renderer.out(f"Reader page (in your browser, updates itself): {page}", "dim")
+            else:
+                app.renderer.out(f"Saved: {page or target}   (type /saved to open the folder)", "dim")
         return target
     app.renderer.out("(could not save a copy of this chat anywhere - check your disk)", "red")
     return None
@@ -145,8 +189,17 @@ def run_live(app: App, factory: Callable[[Any], Any]) -> Any:
 
 def show_result(app: App, ctx: Ctx, rr: RoundResult) -> int:
     r = app.renderer
+    compact = False
     if r.mode == "rich":
-        r.print_round(rr.round, rr.runs, ctx.branch.name)
+        if reading(app):  # write the reader page first; the terminal then only needs a short recap
+            autosave(app, ctx, quiet=True)
+            compact = app.reader_shown
+        if compact:
+            r.print_round_header(rr.round, ctx.branch.name)
+            r.print_round_summary(rr.runs)
+            r.out("Read the answers in your browser (the page updates itself). /read opens it again.", "bold")
+        else:
+            r.print_round(rr.round, rr.runs, ctx.branch.name)
     elif r.mode == "plain":
         r.print_round_summary(rr.runs)
     else:
@@ -159,7 +212,7 @@ def show_result(app: App, ctx: Ctx, rr: RoundResult) -> int:
     else:
         for n in lc["notes"]:
             r.out(f"• {n}", "yellow")
-    autosave(app, ctx)
+    autosave(app, ctx, quiet=compact and not rr.waiting)
     return rr.exit_code
 
 
@@ -669,7 +722,9 @@ def clean_screen(app: App, ctx: Ctx, rnd: Any, analysis: Any) -> None:
     r = app.renderer
     if r.mode == "rich":
         r.console.clear()
-    r.out(f"{ctx.chat.name} - round {rnd.seq} done  (scroll up for the full answers and comparison)", "bold")
+    where = "the full answers and comparison are on the reader page" if reading(app) and app.reader_shown \
+        else "scroll up for the full answers and comparison"
+    r.out(f"{ctx.chat.name} - round {rnd.seq} done  ({where})", "bold")
     for run in app.store.runs_for_round(rnd.id):
         if run.status == RunStatus.SKIPPED:
             continue
@@ -677,7 +732,9 @@ def clean_screen(app: App, ctx: Ctx, rnd: Any, analysis: Any) -> None:
         r.out(f"  {mark} {r.name(run.provider)}: {_gist(run.output_text) or run.status.value}")
     if analysis is not None and analysis.result and analysis.result.get("summary"):
         r.out(f"  Comparison: {_gist(str(analysis.result['summary']), 140)}", "cyan")
-    if (root := saved_root(app)) and not app.config.demo:
+    if app.reader_page:
+        r.out(f"  Reader page: {app.reader_page}   (/read opens it)", "dim")
+    elif root := saved_root(app):
         r.out(f"  Saved in: {root}   (/saved opens it)", "dim")
     r.out("")
     r.out(NEXT_MENU)
@@ -703,7 +760,11 @@ def next_step(app: App) -> None:
             try:
                 analysis = run_live(app, lambda sink: app.engine.analyze(ctx, AnalysisKind.ADJUDICATE, round_seq=rnd.seq,
                                                                          sink=sink))
-                r.print_analysis(analysis, rnd, reveal=True)
+                if reading(app) and app.reader_shown and analysis.result:
+                    r.out(f"Comparison: {_gist(str(analysis.result.get('summary', '')), 200) or 'done'}", "cyan")
+                    r.out("The full comparison is the 'At a glance' box on the reader page.", "dim")
+                else:
+                    r.print_analysis(analysis, rnd, reveal=True)
             except CockpitError as e:
                 r.out(f"no comparison this round: {e}", "yellow")
             except KeyboardInterrupt:
@@ -713,7 +774,8 @@ def next_step(app: App) -> None:
             if analysis is not None and not analysis.result:
                 analysis = None
             try:
-                if read_block("\nRead the answers above. Press Enter for a clean screen to type your next message "
+                where = "in your browser" if reading(app) and app.reader_shown else "above"
+                if read_block(f"\nRead the answers {where}. Press Enter for a clean screen to type your next message "
                               "(or x for a fresh question): ").strip().lower().startswith("x"):
                     return
             except (EOFError, KeyboardInterrupt):
@@ -803,6 +865,25 @@ def cmd_export(app: App, args: argparse.Namespace) -> int:
         print(f"exported chat {ctx.chat.name} to {args.output} (mode 600)")
     else:
         print(text)
+    return 0
+
+
+def cmd_read(app: App, args: argparse.Namespace) -> int:
+    """Write the reader page for this chat and show it in the browser."""
+    if not app.config.autosave_dir:
+        raise CockpitError("saving is turned off (autosave_dir in config.toml), so there is no reader page")
+    if not app.config.reader:
+        raise CockpitError("the reader page is turned off (reader = false in config.toml)")
+    autosave(app, app.ctx(create=False), quiet=True, force=True)
+    if not app.reader_page:
+        raise CockpitError("could not write the reader page")
+    page = Path(app.reader_page)
+    opened = False if getattr(args, "no_open", False) else open_page(page)
+    app.reader_shown = app.reader_shown or opened
+    if app.renderer.mode == "json":
+        print(json.dumps({"reader_page": str(page), "opened": opened}))
+    else:
+        print(f"Reader page: {page}" + ("" if opened else "   (open this file in your browser)"))
     return 0
 
 
@@ -975,6 +1056,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--format", choices=("md", "json"), default="md")
     sp.add_argument("-o", "--output")
     sp.add_argument("--dir", help="write a project/chat directory tree here")
+    sp = add("read", cmd_read, "open the reader page: this chat formatted for reading in your browser")
+    sp.add_argument("--no-open", action="store_true", help="write the page but do not open the browser")
     sp = add("delete-chat", cmd_chat, "permanently delete a chat", aliases=["delete-session"])
     sp.add_argument("name")
     sp.add_argument("--yes", action="store_true")

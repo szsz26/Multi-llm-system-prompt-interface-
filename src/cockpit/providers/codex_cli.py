@@ -128,6 +128,8 @@ class CodexCLIAdapter(ProviderAdapter):
             argv += ["-m", validate_model_name(request.model)]
         if request.reasoning:
             argv += ["-c", f'model_reasoning_effort="{request.reasoning}"']
+        if request.system_prompt:  # the visible chat-style instruction (never set for judges)
+            argv += ["-c", f"developer_instructions={json.dumps(request.system_prompt)}"]
         if request.ephemeral:
             argv.append("--ephemeral")
         if resume:

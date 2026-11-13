@@ -155,7 +155,7 @@ def test_draft_default_is_anonymized_without_full_responses(harness):
     for p in h.engine.config.provider_ids:
         assert secret(p) not in pk.content  # no full response revealed
     assert "Response A" not in pk.content and "best" not in pk.content.lower().split("how to use")[0]
-    assert not any(n in pk.content for n in ("Claude", "OpenAI", "Gemini", "Grok", "Perplexity"))
+    assert not any(n in pk.content for n in ("Claude", "OpenAI", "ChatGPT", "Gemini", "Grok", "Perplexity"))
 
 
 def test_summary_disclosure_hides_side_reasoning(harness):

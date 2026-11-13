@@ -24,7 +24,13 @@ def test_same_prompt_verbatim_to_every_lane(harness):
     h = harness()
     h.send("Exact wording here.", fresh=True)
     assert {h.calls(p)[-1].messages[-1].content for p in PROVIDERS} == {"Exact wording here."}
-    assert all(h.calls(p)[-1].system_prompt is None for p in PROVIDERS)  # no hidden global prompt
+    from cockpit.config import DEFAULT_CHAT_STYLE
+
+    # the only instruction is the visible chat-style line, identical for every lane
+    assert {h.calls(p)[-1].system_prompt for p in PROVIDERS} == {DEFAULT_CHAT_STYLE}
+    h.engine.config.chat_style = None
+    h.send("Again.", fresh=True)
+    assert all(h.calls(p)[-1].system_prompt is None for p in PROVIDERS)  # turned off: nothing is sent
 
 
 def test_chat_isolation(harness):

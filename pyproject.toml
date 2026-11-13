@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-cockpit"
-version = "0.4.1"
+version = "0.5.0"
 description = "Local CLI-first cockpit for prompting multiple frontier models in parallel, with isolated threads, rounds, adjudication and iteration."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.27",
     "rich>=13.7",
+    "markdown-it-py>=3.0",
 ]
 
 [project.optional-dependencies]

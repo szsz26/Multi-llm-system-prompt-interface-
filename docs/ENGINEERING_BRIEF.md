@@ -1,10 +1,10 @@
-# LLM Cockpit: engineering review brief (v0.4.1)
+# LLM Cockpit: engineering review brief (v0.5.0)
 
 ## 1. What it is
 A local, single-process tool. One prompt goes to several AI "lanes" at once (Claude, ChatGPT/Codex, Grok, Perplexity, optionally Gemini). Each lane keeps its own isolated conversation. Cockpit then compares the answers, runs a blind judge, and sends user-reviewed feedback back. Its goal is to replace manually copy-pasting between the vendors' chat apps, and to use the user's existing **subscriptions** rather than paid APIs wherever an official path exists.
 
 - **Stack:** Python 3.11+, SQLite (stdlib), `httpx`, `rich`. No server, queue or Docker.
-- **Size:** ~7,250 lines across 25 modules in `src/cockpit/`; 136 tests in `tests/`.
+- **Size:** ~8,350 lines across 32 modules in `src/cockpit/`; 141 tests in `tests/`.
 - **Interface:** CLI first (`cockpit ...`), plus an interactive shell (`cockpit`) that uses the same handlers. The engine is UI-agnostic and event-driven, so a web UI can sit on top later.
 - **Code:** delivered as the archive `llm-cockpit-v0.3.2.tar.gz` (not yet in a git repo).
 
@@ -19,6 +19,8 @@ user prompt ─► engine.send()
 lanes = subprocesses: claude | codex | grok   (each talks only to its own vendor)
 Perplexity = manual: prompt to clipboard + opens user's browser; answer pasted back
 ```
+Reader page (`reader.py`, v0.5.0): after each round `cli.autosave` also writes `<topic>.html` and opens it once in the browser; the page polls a tiny `<topic>.version.js` and reloads itself when a newer version is saved. Markdown is rendered in Python with `markdown-it-py` (raw HTML off; links limited to http/https/mailto; images https only). Fenced `html` / `svg` / `mermaid` / long `markdown` blocks become artifacts: each is written to its own file and shown in an `<iframe sandbox="allow-scripts">` (no same-origin), with an injected CSP (`connect-src 'none'`, scripts only inline or from cdnjs / jsDelivr / unpkg); SVG is shown via `<img>`. The page itself has a nonce-based `script-src`, so only its own script and three pinned, integrity-checked cdnjs libraries (highlight.js, KaTeX; mermaid inside the diagram frame) run. A frame may `postMessage` its content height; the page reads only that number. A visible `chat_style` instruction (config, default on, never sent to judges) asks lanes to answer as in their chat apps: `--system-prompt` (Claude), `-c developer_instructions=` (Codex), `--system-prompt-override` (Grok). **Review ask:** is the sandbox + CSP model for AI-written HTML sufficient when the saved artifact file is opened directly (outside the frame)?
+
 Interactive shell: after each round, `cli.next_step` runs a blind adjudication and asks the user what each lane gets next (just their message / + comparison / + comparison and all answers, per lane). `engine.send_next` sends that as ONE round with per-lane inputs (`_plan_runs(per_lane=...)`). Nothing runs without the user's confirmation. `cli.read_block` keeps a multi-line paste as one prompt (previously each pasted line started its own round). A readable export is written after every round (`cli.autosave`, `autosave_dir`), because CLI conversations don't appear in the vendors' consumer chat history.
 
 Models never see each other's output. Cross-model content reaches a lane only through a **feedback packet** that the user drafts, reviews and edits before it is sent.
@@ -83,7 +85,7 @@ Native vendor sessions are a cache. Cockpit's tree is the source of truth; a nat
 - **Grok:** answers may rest on X posts.
 
 ## 9. Testing
-136 tests, no network, $0 cost.
+141 tests, no network, $0 cost.
 
 | File | Tests | Covers |
 |---|---|---|
@@ -96,6 +98,7 @@ Native vendor sessions are a cache. Cockpit's tree is the source of truth; a nat
 | `test_manual_lane.py` | 9 | Perplexity helper |
 | `test_cli_transports.py` | 9 | fake `claude` / `codex` / `grok` binaries assert argv, stdin, env stripping, resume, fallback |
 | `test_parsers.py` | 30 | every stream parser, using real captured output where available |
+| `test_reader.py` | 5 | reader page: Markdown made safe, artifacts sandboxed, names in the comparison, short terminal recap |
 | `test_next_round.py` | 6 | per-lane next round, paste stays one prompt, export shows what each AI was sent |
 | `test_store_security_cli.py` | 10 | migration, permissions, CLI end-to-end |
 
@@ -119,7 +122,7 @@ Native vendor sessions are a cache. Cockpit's tree is the source of truth; a nat
 ```bash
 python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
 cockpit --demo          # fake lanes, no accounts needed
-pytest                  # 136 tests
+pytest                  # 141 tests
 cockpit doctor --live   # real lanes: install and sign in to each CLI first
 ```
 
